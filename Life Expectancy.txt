@@ -1,0 +1,233 @@
+---
+title: "Regressions for Life Expectancy"
+date: "2023-04-13"
+output: html_document
+---
+  
+  Observing the impact of economic and wealth variables using Multiple Linear Regression
+<br> 
+  <br> 
+  
+  * Imported Life Expectancy Data csv file and removed null values from Life.expectancy variable
+```{r}
+#import the data
+life.df <- read.csv("Life Expectancy Data.csv")
+
+#remove NAs from Life expectancy
+life.df2 <- life.df[!is.na(life.df$Life.expectancy) & life.df$Life.expectancy != "",]
+```
+
+* For this analysis, we will be using some variables related to economic conditions and wealth: GDP, Population, Income composition of resources, and Schooling
+
+```{r, include=FALSE}
+
+selected.columns <- c(4,17,18,21,22)
+
+```
+
+* The data set is partitioned for training and validation
+```{r}
+
+
+set.seed(100)  
+
+
+train.index <-sample(rownames(life.df2), dim(life.df2)[1]*0.6)
+train.df<-life.df2[train.index,selected.columns]
+
+valid.index<-setdiff(rownames(life.df2),train.index)
+valid.df<-life.df2[valid.index,selected.columns]
+```
+
+* The multiple linear regression model for the 4 variables is created
+```{r}
+
+# Create linear regression model with life expectancy as the dependent variable
+
+options(scipen=999)
+
+life.model <- lm(Life.expectancy~., data=train.df)
+summary(life.model)
+```
+
+* Exhaustive search is done to find all possible combinations of best predictor variables to find best subset of predictors
+```{r}
+#exhaustive search
+library(leaps)
+search <- regsubsets(Life.expectancy ~., data=train.df, nbest=1, nvmax=dim(train.df)[2], method = "exhaustive")
+
+sum <- summary(search)
+
+sum$which
+sum$adjr2 #observing adjusted R squared values
+
+
+
+which.max(sum$adjr2)
+sum$which[3,] #selecting the 3 variables that will be used in updated model 
+
+
+```
+
+* The new model omits Population and keeps GDP, Income composition of resources, and Schooling
+
+```{r}
+#multiple linear regression model of the relevant 3 variables
+life.model.3 <- lm(Life.expectancy~GDP+Income.composition.of.resources+Schooling, data=train.df)
+
+```
+
+* Comparing the old model with the new model.
+
+```{r}
+
+
+summary(life.model)
+summary(life.model.3)
+```
+* In the new model, the coefficients mean that increasing by 1 unit in:         
+  * Income.composition.of.resources increases the life expectancy by 13.3 years
+* Schooling increases the life expectancy by 1.36 years
+* GDP increases life expectancy by 0.00007734 years
+
+
+
+
+* The old model and new model are used to create predictions on Life Expectancy with validation data set
+```{r}
+
+life.model.predict <- predict(life.model, valid.df)
+life.model.3.predict <- predict(life.model.3, valid.df)
+```
+
+
+
+
+
+
+* The accuracy of models are compared below. It can be observed that only RMSE is higher. The rest of the metrics are lower which means that the new model that omits Population is more accurate.
+```{r}
+
+library(forecast)
+accuracy(life.model.predict, valid.df$Life.expectancy)
+accuracy(life.model.3.predict, valid.df$Life.expectancy)
+```
+
+Conclusion
+
+* GDP, Income composition of resources, and Schooling are discernable predictors of life expectancy that are not related to health. All three of these variables show to have a positive relationship with Life expectancy, which demonstrates that health isn't the only predictor of life expectancy, but wealth and economic conditions as well.
+
+
+
+<br> 
+<br> 
+<br> 
+
+Using Logistic Regression to determine which deadly variables impacts the odds of reaching over the age of 70
+
+
+
+* Imported Life Expectancy csv file again, loaded required packages, and removed null values in Life.expectancy variable.
+```{r }
+
+life.df.logit <- read.csv("Life Expectancy Data.csv")
+
+library(leaps)
+library(dplyr)
+
+
+life.df.logit <- life.df[!is.na(life.df$Life.expectancy) & life.df$Life.expectancy != "",]
+
+```
+
+* For this data set, a new variable called "age_group" is created from the Life.expecancy variable. This is to divide the life expectancy years by under 70 and over 70, displayed as 0 and 1 respectively.
+
+```{r}
+
+#less than 70 years life expectancy will be displayed as 0. Over 70 will be displayed as a 1
+life.df.logit <- life.df.logit%>%mutate(age_group = ifelse(Life.expectancy < 70, 0, 1))
+
+head(life.df.logit)
+
+
+```
+
+
+* For this analysis, we are keeping the health-related variables we find most important along with some of the most deadliest diseases. We will also be including Alcohol as a variable.
+```{r}
+#only keep disease and health related variables and remove NAs from the selected columns
+selected.columns2 <- c(7,11,13,16,19,23)
+
+life.df.logit2 <- life.df.logit %>% select(all_of(selected.columns2)) %>% na.omit()
+
+summary(life.df.logit2)
+```
+
+
+* Training and validation data set created below:
+```{r}
+
+set.seed(100)
+train.index = sample(rownames(life.df.logit2), dim(life.df.logit2)[1]*0.6)
+train.df = life.df.logit2[train.index,]
+
+valid.index = setdiff(rownames(life.df.logit2), train.index)
+valid.df = life.df.logit2[valid.index,]
+
+head(train.df)
+```
+
+
+* Logistic regression model created here for the health and disease related variables mentioned above. These variables show the relationships they have with life expectancy being over or under 70.
+```{r}
+#fit logistic regression model, assess it, and check the coefficients
+
+#model
+log_model <- glm(age_group ~., data = train.df, family = "binomial")
+
+
+#model assessment
+
+summary(log_model)
+
+#interprete results
+
+coef(log_model)
+```
+
+
+
+* Predictions of age_group is calculated from the logistic regression model created above.
+```{r, results='hide'}
+#make predictions with validation data set
+log_model_predict <- predict(log_model, valid.df[,-10], type = "response")
+
+log_model_predict
+```
+
+
+
+* Confusion matrix is created here to compare the actual values of age group in the data set to the predicted values of age group from the logisitic regression model.
+
+* In addition, the misclassification rate is also calcualted. The rate is 12.8%, meaning for the most part, the model did a good job of calculating the age group.
+```{r}
+
+
+age_groupActual<-valid.df$age_group
+age_groupPred<-rep(0,dim(valid.df)[1])
+
+age_groupPred[log_model_predict>0.5]=1
+table(age_groupActual,age_groupPred)
+
+
+
+#calculate mis-classification rate
+
+mean(age_groupActual != age_groupPred)
+
+#the misclassification rate is 12.8%
+```
+
+Conclusion
+
+  * Based on the coefficients of the logistic regression model, the odds of someone living over 70 years old is at the lowest with HIV.AIDS. The 2nd lowest would be thinness between the ages of 10 and 19 (adolecense). Compared to the rest of the variables in this model, consumption of alcohol would leave someone with a better chance of making it over 70.
